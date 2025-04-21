@@ -1,4 +1,3 @@
-// Replace the current content of src/lib/auth/auth-utils.ts with this:
 
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
