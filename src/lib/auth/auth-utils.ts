@@ -1,136 +1,75 @@
-import { cookies } from 'next/headers';
-import { NextRequest, NextResponse } from 'next/server';
+// Replace the current content of src/lib/auth/auth-utils.ts with this:
+
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 
-// Secret key for JWT signing - in production, use environment variables
-const JWT_SECRET = process.env.JWT_SECRET || 'care-home-saas-secret-key';
-
-// User roles
+// User roles enum
 export enum UserRole {
-  STAFF = 'staff',
-  ADMIN = 'admin',
-  SUPER_ADMIN = 'super_admin'
+  STAFF = 'STAFF',
+  ADMIN = 'ADMIN',
+  SUPER_ADMIN = 'SUPER_ADMIN'
 }
 
-// User interface
-export interface User {
-  id: number;
+// JWT token interface
+export interface JwtPayload {
+  userId: number;
   email: string;
-  firstName: string;
-  lastName: string;
   role: UserRole;
-  facilityId?: number;
 }
 
-// Authentication utilities
-export const authUtils = {
-  // Hash password
-  async hashPassword(password: string): Promise<string> {
-    return await bcrypt.hash(password, 10);
-  },
+// Hash password
+export const hashPassword = async (password: string): Promise<string> => {
+  return await bcrypt.hash(password, 10);
+};
 
-  // Compare password with hash
-  async comparePassword(password: string, hash: string): Promise<boolean> {
-    return await bcrypt.compare(password, hash);
-  },
+// Compare password with hash
+export const comparePasswords = async (password: string, hashedPassword: string): Promise<boolean> => {
+  return await bcrypt.compare(password, hashedPassword);
+};
 
-  // Generate JWT token
-  generateToken(user: User): string {
-    const payload = {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      facilityId: user.facilityId
-    };
-    
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
-  },
+// Generate JWT token
+export const generateToken = (payload: JwtPayload): string => {
+  const secret = process.env.JWT_SECRET || 'your-secret-key';
+  return jwt.sign(payload, secret, { expiresIn: '7d' });
+};
 
-  // Verify JWT token
-  verifyToken(token: string): any {
-    try {
-      return jwt.verify(token, JWT_SECRET);
-    } catch (error) {
-      return null;
-    }
-  },
-
-  // Set auth cookie
-  setAuthCookie(response: NextResponse, token: string): void {
-    response.cookies.set({
-      name: 'auth_token',
-      value: token,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 60 * 60 * 24 // 24 hours
-    });
-  },
-
-  // Get auth cookie
-  getAuthCookie(): string | undefined {
-    const cookieStore = cookies();
-    return cookieStore.get('auth_token')?.value;
-  },
-
-  // Clear auth cookie
-  clearAuthCookie(response: NextResponse): void {
-    response.cookies.set({
-      name: 'auth_token',
-      value: '',
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 0
-    });
-  },
-
-  // Get current user from request
-  getCurrentUser(req: NextRequest): User | null {
-    const token = req.cookies.get('auth_token')?.value;
-    if (!token) return null;
-    
-    const decoded = this.verifyToken(token);
-    if (!decoded) return null;
-    
-    return {
-      id: decoded.id,
-      email: decoded.email,
-      firstName: decoded.firstName,
-      lastName: decoded.lastName,
-      role: decoded.role,
-      facilityId: decoded.facilityId
-    };
-  },
-
-  // Check if user has required role
-  hasRole(user: User | null, requiredRoles: UserRole[]): boolean {
-    if (!user) return false;
-    return requiredRoles.includes(user.role);
+// Verify JWT token
+export const verifyToken = (token: string): JwtPayload | null => {
+  try {
+    const secret = process.env.JWT_SECRET || 'your-secret-key';
+    return jwt.verify(token, secret) as JwtPayload;
+  } catch (error) {
+    return null;
   }
 };
 
-// Role-based access control middleware
-export async function withAuth(
-  req: NextRequest,
-  allowedRoles: UserRole[] = [UserRole.STAFF, UserRole.ADMIN, UserRole.SUPER_ADMIN]
-) {
-  const user = authUtils.getCurrentUser(req);
+// Client-side cookie management functions
+export const setCookieClient = (name: string, value: string, days: number) => {
+  if (typeof window === 'undefined') return;
   
-  if (!user) {
-    return NextResponse.json(
-      { error: 'Authentication required' },
-      { status: 401 }
-    );
+  let expires = '';
+  if (days) {
+    const date = new Date();
+    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
+    expires = '; expires=' + date.toUTCString();
   }
+  document.cookie = name + '=' + (value || '') + expires + '; path=/';
+};
+
+export const getCookieClient = (name: string) => {
+  if (typeof window === 'undefined') return null;
   
-  if (!authUtils.hasRole(user, allowedRoles)) {
-    return NextResponse.json(
-      { error: 'Insufficient permissions' },
-      { status: 403 }
-    );
+  const nameEQ = name + '=';
+  const ca = document.cookie.split(';');
+  for (let i = 0; i < ca.length; i++) {
+    let c = ca[i];
+    while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+    if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
   }
-  
-  return user;
-}
+  return null;
+};
+
+export const eraseCookieClient = (name: string) => {
+  if (typeof window === 'undefined') return;
+  document.cookie = name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+};
